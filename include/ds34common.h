@@ -14,6 +14,9 @@
 #define GUITAR_HERO_PS3_PID 0x0100 // PS3 Guitar Hero Guitar
 #define ROCK_BAND_PS3_PID   0x0200 // PS3 Rock Band Guitar
 
+#define USB_JOY_VID         0x0079 // USB Joystick
+#define USB_JOY_PID         0x0006 // USB Joystick
+
 // NOTE: struct member prefixed with "n" means it's active-low (i.e. value of 0 indicates button is pressed, value 1 is released)
 enum DS2ButtonBitNumber {
     DS2BtnBit_Select = 0,
@@ -307,5 +310,12 @@ void translate_pad_guitar(const struct ds3guitarreport *in, struct ds2report *ou
  * NOTE: if set to 1, ds4report must be large enough for that data to be read!
  */
 void translate_pad_ds4(const struct ds4report *in, struct ds2report *out, uint8_t have_touchpad);
+
+/**
+ * Translate a generic USB joystick report into DS2 pad data.
+ * @param report 8-byte joystick report
+ * @param out DS2 report
+ */
+void translate_pad_joystick(const uint8_t *report, struct ds2report *out);
 
 #endif

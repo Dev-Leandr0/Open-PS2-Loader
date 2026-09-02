@@ -90,6 +90,9 @@ int usb_probe(int devId)
     if (device->idVendor == DS34_VID && (device->idProduct == DS3_PID || device->idProduct == DS4_PID || device->idProduct == DS4_PID_SLIM))
         return 1;
 
+    if (device->idVendor == USB_JOY_VID && device->idProduct == USB_JOY_PID)
+        return 1;
+
     return 0;
 }
 
@@ -133,6 +136,9 @@ int usb_connect(int devId)
         epCount = interface->bNumEndpoints - 1;
     } else if (device->idProduct == ROCK_BAND_PS3_PID) {
         ds34pad[pad].type = GUITAR_RB;
+        epCount = interface->bNumEndpoints - 1;
+    } else if (device->idVendor == USB_JOY_VID && device->idProduct == USB_JOY_PID) {
+        ds34pad[pad].type = JOYSTICK;
         epCount = interface->bNumEndpoints - 1;
     } else {
         ds34pad[pad].type = DS4;
@@ -247,6 +253,10 @@ static void usb_config_set(int result, int count, void *arg)
         led[1] = rgbled_patterns[pad][1][1];
         led[2] = rgbled_patterns[pad][1][2];
         led[3] = 0;
+    } else if (ds34pad[pad].type == JOYSTICK) {
+        ds34pad[pad].status |= DS34USB_STATE_RUNNING;
+        SignalSema(ds34pad[pad].sema);
+        return;
     }
 
     LEDRumble(led, 0, 0, pad);
@@ -278,6 +288,10 @@ static void readReport(u8 *data, int pad_idx)
 
         translate_pad_guitar(report, &pad->ds2, pad->type == GUITAR_GH);
         padMacroPerform(&pad->ds2, report->PSButton);
+    }
+    if (pad->type == JOYSTICK) {
+        translate_pad_joystick(data, &pad->ds2);
+        padMacroPerform(&pad->ds2, 0);
     }
     if (data[0]) {
 
