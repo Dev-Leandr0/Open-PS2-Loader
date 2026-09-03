@@ -377,6 +377,8 @@ static void readReport(u8 *data, int pad_idx)
     }
 }
 
+static void TransferWait(int sema);
+
 static int LEDRumble(u8 *led, u8 lrum, u8 rrum, int pad)
 {
     int ret = 0;
