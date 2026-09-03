@@ -92,6 +92,9 @@ int usb_probe(int devId)
     if (device->idVendor == DS34_VID && (device->idProduct == DS3_PID || device->idProduct == DS4_PID || device->idProduct == DS4_PID_SLIM))
         return 1;
 
+    if (device->idVendor == USB_JOY_VID && device->idProduct == USB_JOY_PID)
+        return 1;
+
     return 0;
 }
 
@@ -129,6 +132,9 @@ int usb_connect(int devId)
 
     if (device->idProduct == DS3_PID) {
         ds34pad[pad].type = DS3;
+        epCount = interface->bNumEndpoints - 1;
+    } else if (device->idVendor == USB_JOY_VID && device->idProduct == USB_JOY_PID) {
+        ds34pad[pad].type = JOYSTICK;
         epCount = interface->bNumEndpoints - 1;
     } else {
         ds34pad[pad].type = DS4;
@@ -243,6 +249,10 @@ static void usb_config_set(int result, int count, void *arg)
         led[1] = rgbled_patterns[pad][1][1];
         led[2] = rgbled_patterns[pad][1][2];
         led[3] = 0;
+    } else if (ds34pad[pad].type == JOYSTICK) {
+        ds34pad[pad].status |= DS34USB_STATE_RUNNING;
+        SignalSema(ds34pad[pad].sema);
+        return;
     }
 
     LEDRumble(led, 0, 0, pad);
@@ -265,6 +275,11 @@ static void DS3USB_init(int pad)
 
 static void readReport(u8 *data, int pad)
 {
+    if (ds34pad[pad].type == JOYSTICK) {
+        translate_pad_joystick(data, &ds34pad[pad].ds2);
+        return;
+    }
+
     if (data[0]) {
 
         if (ds34pad[pad].type == DS3) {
@@ -538,7 +553,8 @@ void ds34usb_get_data(char *dst, int size, int port)
 
     PollSema(ds34pad[port].sema);
 
-    ret = UsbInterruptTransfer(ds34pad[port].interruptEndp, usb_buf, MAX_BUFFER_SIZE, usb_data_cb, (void *)port);
+    int transferSize = (ds34pad[port].type == JOYSTICK) ? 8 : MAX_BUFFER_SIZE;
+    ret = UsbInterruptTransfer(ds34pad[port].interruptEndp, usb_buf, transferSize, usb_data_cb, (void *)port);
 
     if (ret == USB_RC_OK) {
         TransferWait(ds34pad[port].sema);
@@ -560,6 +576,9 @@ int ds34usb_get_bdaddr(u8 *data, int port)
     int i, ret;
 
     if (port >= MAX_PADS)
+        return 0;
+
+    if (ds34pad[port].type == JOYSTICK)
         return 0;
 
     if (ds34pad[port].update_rum) {
@@ -612,6 +631,9 @@ void ds34usb_set_bdaddr(u8 *data, int port)
     int i, ret;
 
     if (port >= MAX_PADS)
+        return;
+
+    if (ds34pad[port].type == JOYSTICK)
         return;
 
     WaitSema(ds34pad[port].sema);
