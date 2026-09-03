@@ -422,6 +422,28 @@ static int LEDRumble(u8 *led, u8 lrum, u8 rrum, int pad)
         }
 
         ret = UsbInterruptTransfer(ds34pad[pad].outEndp, usb_buf, 32, usb_cmd_cb, (void *)pad);
+    } else if (ds34pad[pad].type == JOYSTICK) {
+        mips_memset(usb_buf, 0, 7);
+
+        if (lrum || rrum) {
+            usb_buf[0] = 0x51;
+            usb_buf[2] = lrum; // weak
+            usb_buf[4] = rrum; // strong
+
+            ret = UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT, (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 7, usb_buf, usb_cmd_cb, (void *)pad);
+            if (ret == USB_RC_OK)
+                TransferWait(ds34pad[pad].cmd_sema);
+
+            mips_memset(usb_buf, 0, 7);
+            usb_buf[0] = 0xFA;
+            usb_buf[1] = 0xFE;
+
+            ret = UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT, (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 7, usb_buf, usb_cmd_cb, (void *)pad);
+        } else {
+            usb_buf[0] = 0xF3;
+
+            ret = UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT, (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 7, usb_buf, usb_cmd_cb, (void *)pad);
+        }
     }
 
     ds34pad[pad].oldled[0] = led[0];
