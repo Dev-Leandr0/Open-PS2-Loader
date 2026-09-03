@@ -335,10 +335,9 @@ static int readPad(struct pad_data_t *pad)
 #ifdef PADEMU
         if (ds34usb_get_status(pad->port) & DS34USB_STATE_RUNNING) {
             char line[160];
-            u16 btnsVal = (u16)((pad->buttons.btns[1] << 8) | pad->buttons.btns[0]);
             sprintf(line, "[PAD DS34USB] port=%d btns=%04X ljoy=(%d,%d) rjoy=(%d,%d) mode=%02X newpdata=%08X\n",
                     pad->port,
-                    btnsVal,
+                    (unsigned)pad->buttons.btns,
                     pad->buttons.ljoy_h, pad->buttons.ljoy_v,
                     pad->buttons.rjoy_h, pad->buttons.rjoy_v,
                     pad->buttons.mode,
