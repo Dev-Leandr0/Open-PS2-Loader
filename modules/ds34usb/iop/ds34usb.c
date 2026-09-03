@@ -72,6 +72,7 @@ UsbDriver usb_driver = {NULL, NULL, "ds34usb", usb_probe, usb_connect, usb_disco
 
 static void DS3USB_init(int pad);
 static void readReport(u8 *data, int pad);
+static void TransferWait(int sema);
 static int LEDRumble(u8 *led, u8 lrum, u8 rrum, int pad);
 static int Rumble(u8 lrum, u8 rrum, int pad);
 
