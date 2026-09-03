@@ -471,7 +471,9 @@ int ds34usb_get_data(u8 *dst, int size, int port)
 
     PollSema(ds34pad[port].sema);
 
-    ret = UsbInterruptTransfer(ds34pad[port].interruptEndp, usb_buf, MAX_BUFFER_SIZE, usb_data_cb, (void *)port);
+    int transferSize = (ds34pad[port].type == JOYSTICK) ? 8 : MAX_BUFFER_SIZE;
+
+    ret = UsbInterruptTransfer(ds34pad[port].interruptEndp, usb_buf, transferSize, usb_data_cb, (void *)port);
 
     if (ret == USB_RC_OK) {
         TransferWait(ds34pad[port].sema);
