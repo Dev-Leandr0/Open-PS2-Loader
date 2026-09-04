@@ -236,5 +236,6 @@ void ds34bt_reset();
 int ds34bt_get_data(u8 *dst, int size, int port);
 void ds34bt_set_rumble(u8 lrum, u8 rrum, int port);
 void ds34bt_set_mode(int mode, int lock, int port);
+int ds34bt_get_mode(int port);
 
 #endif

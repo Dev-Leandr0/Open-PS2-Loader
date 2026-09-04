@@ -1357,6 +1357,19 @@ void ds34bt_set_mode(int mode, int lock, int port)
     SignalSema(bt_dev.hid_sema);
 }
 
+int ds34bt_get_mode(int port)
+{
+    int ret;
+
+    WaitSema(bt_dev.hid_sema);
+
+    ret = ds34pad[port].analog_btn & 1;
+
+    SignalSema(bt_dev.hid_sema);
+
+    return ret;
+}
+
 int ds34bt_get_status(int port)
 {
     int ret;

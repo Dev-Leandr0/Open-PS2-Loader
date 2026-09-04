@@ -19,6 +19,7 @@
 #define PAD_GET_DATA        ds34bt_get_data
 #define PAD_SET_RUMBLE      ds34bt_set_rumble
 #define PAD_SET_MODE        ds34bt_set_mode
+#define PAD_GET_MODE        ds34bt_get_mode
 #define PAD_GET_MODEL(port) 3
 
 #elif defined(USB)
@@ -32,6 +33,7 @@
 #define PAD_GET_MODEL  ds34usb_get_model
 #define PAD_SET_RUMBLE ds34usb_set_rumble
 #define PAD_SET_MODE   ds34usb_set_mode
+#define PAD_GET_MODE   ds34usb_get_mode
 
 #else
 #error "must define mode"
@@ -434,7 +436,7 @@ void pademu_cmd(int port, u8 *in, u8 *out, u8 out_size)
             i = PAD_GET_DATA(&out[3], out_size - 3, port);
 
             if (pad[port].mode_lock == 0) { // mode unlocked
-                int analog = pad[port].analog_btn & 1;
+                int analog = PAD_GET_MODE(port);
 
                 if (pad[port].mode != analog) {
                     pad[port].mode = analog;

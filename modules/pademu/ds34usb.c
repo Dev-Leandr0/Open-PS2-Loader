@@ -569,6 +569,17 @@ int ds34usb_get_model(int port)
     return ret;
 }
 
+int ds34usb_get_mode(int port)
+{
+    int ret;
+
+    WaitSema(ds34pad[port].sema);
+    ret = ds34pad[port].analog_btn & 1;
+    SignalSema(ds34pad[port].sema);
+
+    return ret;
+}
+
 int ds34usb_init(u8 pads, u8 options)
 {
     int pad;

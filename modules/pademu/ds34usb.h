@@ -77,6 +77,7 @@ enum eHID {
 int ds34usb_init(u8 pads, u8 options);
 int ds34usb_get_status(int port);
 int ds34usb_get_model(int port);
+int ds34usb_get_mode(int port);
 void ds34usb_reset();
 int ds34usb_get_data(u8 *dst, int size, int port);
 void ds34usb_set_rumble(u8 lrum, u8 rrum, int port);
