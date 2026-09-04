@@ -434,10 +434,12 @@ void pademu_cmd(int port, u8 *in, u8 *out, u8 out_size)
             i = PAD_GET_DATA(&out[3], out_size - 3, port);
 
             if (pad[port].mode_lock == 0) { // mode unlocked
-                if (pad[port].mode != i) {
-                    pad[port].mode = i;
+                int analog = pad[port].analog_btn & 1;
 
-                    if (pad[port].mode)
+                if (pad[port].mode != analog) {
+                    pad[port].mode = analog;
+
+                    if (analog)
                         pad[port].mode_id = ANALOG_MODE;
                     else
                         pad[port].mode_id = DIGITAL_MODE;

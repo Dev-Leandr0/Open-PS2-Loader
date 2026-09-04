@@ -72,7 +72,7 @@ static void usb_config_set(int result, int count, void *arg);
 UsbDriver usb_driver = {NULL, NULL, "ds34usb", usb_probe, usb_connect, usb_disconnect};
 
 static void DS3USB_init(int pad);
-static void readReport(u8 *data, int pad);
+static int readReport(u8 *data, int pad);
 static int LEDRumble(u8 *led, u8 lrum, u8 rrum, int pad);
 
 ds34usb_device ds34pad[MAX_PADS];
@@ -284,9 +284,10 @@ static void DS3USB_init(int pad)
 
 #define MAX_DELAY 10
 
-static void readReport(u8 *data, int pad_idx)
+static int readReport(u8 *data, int pad_idx)
 {
     ds34usb_device *pad = &ds34pad[pad_idx];
+    int valid = 0;
     if (pad->type == GUITAR_GH || pad->type == GUITAR_RB) {
         struct ds3guitarreport *report;
 
@@ -294,10 +295,12 @@ static void readReport(u8 *data, int pad_idx)
 
         translate_pad_guitar(report, &pad->ds2, pad->type == GUITAR_GH);
         padMacroPerform(&pad->ds2, report->PSButton);
+        valid = 1;
     }
     if (pad->type == JOYSTICK) {
         translate_pad_joystick(data, &pad->ds2);
         padMacroPerform(&pad->ds2, 0);
+        valid = 1;
     }
     if (data[0]) {
 
@@ -307,7 +310,7 @@ static void readReport(u8 *data, int pad_idx)
             report = (struct ds3report *)&data[2];
 
             if (report->RightStickX == 0 && report->RightStickY == 0) // ledrumble cmd causes null report sometime
-                return;
+                return 0;
 
             pad->data[0] = ~report->ButtonStateL;
             pad->data[1] = ~report->ButtonStateH;
@@ -339,6 +342,8 @@ static void readReport(u8 *data, int pad_idx)
                 pad->oldled[3] = 1;
             else
                 pad->oldled[3] = 0;
+
+            valid = 1;
 
         } else if (pad->type == DS4) {
             struct ds4report *report;
@@ -376,11 +381,15 @@ static void readReport(u8 *data, int pad_idx)
                 pad->oldled[3] = 1;
             else
                 pad->oldled[3] = 0;
+
+            valid = 1;
         }
         if (pad->btn_delay > 0) {
             pad->update_rum = 1;
         }
     }
+
+    return valid;
 }
 
 static int LEDRumble(u8 *led, u8 lrum, u8 rrum, int pad)
@@ -472,6 +481,7 @@ void ds34usb_set_rumble(u8 lrum, u8 rrum, int port)
 int ds34usb_get_data(u8 *dst, int size, int port)
 {
     int ret = 0;
+    int valid = 0;
     // JOYSTICK receives into the dedicated joy_buf; DS3/DS4 keep using usb_buf.
     u8 *rpt = (ds34pad[port].type == JOYSTICK) ? joy_buf : usb_buf;
 
@@ -486,22 +496,28 @@ int ds34usb_get_data(u8 *dst, int size, int port)
     if (ret == USB_RC_OK) {
         TransferWait(ds34pad[port].sema);
         if (!usb_resulCode)
-            readReport(rpt, port);
+            valid = readReport(rpt, port);
 
         usb_resulCode = 1;
     } else {
         DPRINTF("DS34USB: ds34usb_get_data usb transfer error %d\n", ret);
     }
 
-    mips_memcpy(dst, ds34pad[port].data, size);
-    ret = ds34pad[port].analog_btn & 1;
+    // Only copy fresh, valid report data into the destination. On a transfer
+    // timeout/error, or when readReport() did not refresh the pad data (e.g.
+    // a DS3 null report or an untouched buffer), leave the caller's buffer
+    // untouched and report the invalid state so it is not consumed.
+    if (valid)
+        mips_memcpy(dst, ds34pad[port].data, size);
+
+    ret = valid ? (ds34pad[port].analog_btn & 1) : 0;
 
     if (ds34pad[port].update_rum) {
-        ret = LEDRumble(ds34pad[port].oldled, ds34pad[port].lrum, ds34pad[port].rrum, port);
-        if (ret == USB_RC_OK)
+        int rret = LEDRumble(ds34pad[port].oldled, ds34pad[port].lrum, ds34pad[port].rrum, port);
+        if (rret == USB_RC_OK)
             TransferWait(ds34pad[port].cmd_sema);
         else
-            DPRINTF("DS34USB: LEDRumble usb transfer error %d\n", ret);
+            DPRINTF("DS34USB: LEDRumble usb transfer error %d\n", rret);
 
         ds34pad[port].update_rum = 0;
     }
