@@ -54,41 +54,6 @@ static u32 oldpaddata;
 static int delaycnt[16];
 static int paddelay[16];
 
-#ifdef PADEMU
-// === DIAG (temporal): volcado amortizado de log a mass:/opl_log.txt ===
-static char diag_buf[8192];
-static int diag_len = 0;
-static int diag_n = 0;
-
-static void diag_flush(void)
-{
-    if (diag_len > 0) {
-        int fd = open("mass:/opl_log.txt", O_APPEND | O_CREAT | O_WRONLY);
-        if (fd >= 0) {
-            write(fd, diag_buf, diag_len);
-            close(fd);
-        }
-        diag_len = 0;
-    }
-}
-
-static void diag_pad_log_line(const char *line)
-{
-    int l = strlen(line);
-
-    if (diag_len + l > (int)sizeof(diag_buf) - 1)
-        diag_flush();
-
-    memcpy(diag_buf + diag_len, line, l);
-    diag_len += l;
-    diag_buf[diag_len] = '\0';
-
-    if (++diag_n >= 16)
-        diag_flush();
-}
-// === FIN DIAG ===
-#endif
-
 // KEY_ to PAD_ conversion table
 static const int keyToPad[17] = {
     -1,
@@ -331,20 +296,6 @@ static int readPad(struct pad_data_t *pad)
             rcode = 0;
 
         newpdata |= readLeftJoy(pad, newpdata);
-
-#ifdef PADEMU
-        if (ds34usb_get_status(pad->port) & DS34USB_STATE_RUNNING) {
-            char line[160];
-            sprintf(line, "[PAD DS34USB] port=%d btns=%04X ljoy=(%d,%d) rjoy=(%d,%d) mode=%02X newpdata=%08X\n",
-                    pad->port,
-                    (unsigned)pad->buttons.btns,
-                    pad->buttons.ljoy_h, pad->buttons.ljoy_v,
-                    pad->buttons.rjoy_h, pad->buttons.rjoy_v,
-                    pad->buttons.mode,
-                    newpdata);
-            diag_pad_log_line(line);
-        }
-#endif
 
         pad->oldpaddata = pad->paddata;
         pad->paddata = newpdata;
