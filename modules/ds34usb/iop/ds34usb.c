@@ -3,7 +3,6 @@
 #include "stdio.h"
 #include "sifrpc.h"
 #include "sysclib.h"
-#include "iomanX.h"
 #include "usbd.h"
 #include "usbd_macro.h"
 #include "thbase.h"
@@ -61,41 +60,6 @@ static u8 link_key[] = // for ds4 authorisation
         0xC0, 0x7F, 0x12, 0xAA, 0xD9, 0x66, 0x3C, 0xCE};
 
 static u8 usb_buf[MAX_BUFFER_SIZE + 32] __attribute((aligned(4))) = {0};
-
-// === DIAG (temporal): volcado amortizado de log a mass0:/opl_log.txt ===
-static char diag_buf[8192];
-static int diag_len = 0;
-static int diag_n = 0;
-
-static void diag_flush(void)
-{
-    if (diag_len > 0) {
-        int fd = open("mass0:/opl_log.txt", O_APPEND | O_CREAT | O_WRONLY);
-        if (fd >= 0) {
-            write(fd, diag_buf, diag_len);
-            close(fd);
-        }
-        diag_len = 0;
-    }
-}
-
-static void diag_log_line(const char *line)
-{
-    int l = 0;
-    while (line[l])
-        l++;
-
-    if (diag_len + l > (int)sizeof(diag_buf) - 1)
-        diag_flush();
-
-    mips_memcpy(diag_buf + diag_len, line, l);
-    diag_len += l;
-    diag_buf[diag_len] = '\0';
-
-    if (++diag_n >= 16)
-        diag_flush();
-}
-// === FIN DIAG ===
 
 int usb_probe(int devId);
 int usb_connect(int devId);
@@ -594,25 +558,8 @@ void ds34usb_get_data(char *dst, int size, int port)
 
     if (ret == USB_RC_OK) {
         TransferWait(ds34pad[port].sema);
-        if (ds34pad[port].type == JOYSTICK) {
-            char line[128];
-            sprintf(line, "[DS34USB RAW] port=%d %02X %02X %02X %02X %02X %02X %02X %02X\n",
-                    port, usb_buf[0], usb_buf[1], usb_buf[2], usb_buf[3],
-                    usb_buf[4], usb_buf[5], usb_buf[6], usb_buf[7]);
-            diag_log_line(line);
-        }
-        if (!usb_resulCode) {
+        if (!usb_resulCode)
             readReport(usb_buf, port);
-            if (ds34pad[port].type == JOYSTICK) {
-                char line[160];
-                sprintf(line, "[DS34USB TRANS] port=%d ljoy_h=%d ljoy_v=%d rjoy_h=%d rjoy_v=%d btns=%04X\n",
-                        port,
-                        ds34pad[port].ds2.LeftStickX, ds34pad[port].ds2.LeftStickY,
-                        ds34pad[port].ds2.RightStickX, ds34pad[port].ds2.RightStickY,
-                        ds34pad[port].ds2.nButtonState);
-                diag_log_line(line);
-            }
-        }
 
         usb_resulCode = 1;
     } else {
