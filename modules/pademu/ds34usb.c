@@ -56,18 +56,11 @@ static u8 rgbled_patterns[][2][3] =
 
 static u8 usb_buf[MAX_BUFFER_SIZE + 32] __attribute((aligned(4))) = {0};
 
-// DIAG: dedicated receive buffer for the JOYSTICK interrupt report, kept
-// separate from usb_buf (which LEDRumble() memsets to zero). Its purpose is
-// to distinguish a real all-zero report from the device vs. reuse/overwrite
-// of the shared usb_buf. Static + 4-byte aligned to satisfy the async DMA of
-// UsbInterruptTransfer (same convention as usb_buf).
-static u8 joy_buf[16] __attribute((aligned(4))) = {0};
-
-// DIAG: captures the last JOYSTICK report that translated to btns==0xFFEF,
-// plus the transfer result code and the UsbInterruptTransfer() return value.
-static u8 joy_diag_raw[8];
-static int joy_diag_resul;
-static int joy_diag_ret;
+// Dedicated receive buffer for the JOYSTICK interrupt report, kept separate
+// from usb_buf (which LEDRumble() memsets to zero on every rumble update).
+// Static + 4-byte aligned to satisfy the async DMA of UsbInterruptTransfer
+// (same convention as usb_buf).
+static u8 joy_buf[8] __attribute((aligned(4))) = {0};
 
 int usb_probe(int devId);
 int usb_connect(int devId);
@@ -479,8 +472,7 @@ void ds34usb_set_rumble(u8 lrum, u8 rrum, int port)
 int ds34usb_get_data(u8 *dst, int size, int port)
 {
     int ret = 0;
-    // DIAG: JOYSTICK report goes into the dedicated joy_buf, everything else
-    // keeps using usb_buf. Lets us tell if the shared buffer was the problem.
+    // JOYSTICK receives into the dedicated joy_buf; DS3/DS4 keep using usb_buf.
     u8 *rpt = (ds34pad[port].type == JOYSTICK) ? joy_buf : usb_buf;
 
     WaitSema(ds34pad[port].sema);
@@ -495,16 +487,6 @@ int ds34usb_get_data(u8 *dst, int size, int port)
         TransferWait(ds34pad[port].sema);
         if (!usb_resulCode)
             readReport(rpt, port);
-
-        // DIAG: capture raw report + result codes for the suspicious state
-        // btns==0xFFEF (active-low Up bit set => nButtonStateL==0xEF, H==0xFF).
-        if (ds34pad[port].type == JOYSTICK &&
-            ds34pad[port].ds2.nButtonStateL == 0xEF &&
-            ds34pad[port].ds2.nButtonStateH == 0xFF) {
-            mips_memcpy(joy_diag_raw, rpt, 8);
-            joy_diag_resul = usb_resulCode;
-            joy_diag_ret = ret;
-        }
 
         usb_resulCode = 1;
     } else {
