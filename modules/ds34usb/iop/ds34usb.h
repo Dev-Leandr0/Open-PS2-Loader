@@ -7,6 +7,7 @@
 
 #define DS3 0
 #define DS4 1
+#define JOYSTICK 2
 
 #define MAX_BUFFER_SIZE 64 // Size of general purpose data buffer
 
@@ -30,6 +31,10 @@ typedef struct _usb_ds34
         u8 data[18];
     };
     u8 type;
+    u16 maxPacketSize; // INT-IN endpoint wMaxPacketSize, drives transfer size
+    u16 recvBytes;     // bytes received by the last input transfer
+    u16 vid;           // device VID, used for the HID joystick profile lookup
+    u16 pid;           // device PID, used for the HID joystick profile lookup
 } ds34usb_device;
 
 enum eDS34USBStatus {

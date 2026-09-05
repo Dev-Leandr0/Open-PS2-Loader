@@ -8,6 +8,7 @@
 #include "thbase.h"
 #include "thsemap.h"
 #include "ds34usb.h"
+#include "hidpad.h"
 
 IRX_ID("ds34usb", 1, 1);
 
@@ -61,6 +62,11 @@ static u8 link_key[] = // for ds4 authorisation
 
 static u8 usb_buf[MAX_BUFFER_SIZE + 32] __attribute((aligned(4))) = {0};
 
+// Dedicated receive buffer for the 0079:0006 joystick (report_len 8). Kept
+// separate from usb_buf so a joystick receive can never race with the control
+// transfers (DS3USB_init, LEDRumble, bdaddr) that share usb_buf.
+static u8 joy_buf[8] __attribute((aligned(4))) = {0};
+
 int usb_probe(int devId);
 int usb_connect(int devId);
 int usb_disconnect(int devId);
@@ -71,7 +77,7 @@ static void usb_config_set(int result, int count, void *arg);
 UsbDriver usb_driver = {NULL, NULL, "ds34usb", usb_probe, usb_connect, usb_disconnect};
 
 static void DS3USB_init(int pad);
-static void readReport(u8 *data, int pad);
+static void readReport(u8 *data, int bytes, int pad);
 static int LEDRumble(u8 *led, u8 lrum, u8 rrum, int pad);
 static int Rumble(u8 lrum, u8 rrum, int pad);
 
@@ -91,6 +97,33 @@ int usb_probe(int devId)
 
     if (device->idVendor == DS34_VID && (device->idProduct == DS3_PID || device->idProduct == DS4_PID || device->idProduct == DS4_PID_SLIM))
         return 1;
+
+    // Joysticks are only claimed when a HID profile exists for the VID/PID pair
+    // and the device exposes a valid Interrupt-IN endpoint on an HID interface.
+    if (hid_pad_find(device->idVendor, device->idProduct) != NULL) {
+        UsbConfigDescriptor *config;
+        UsbInterfaceDescriptor *interface;
+        UsbEndpointDescriptor *endpoint;
+        int epCount;
+
+        config = (UsbConfigDescriptor *)UsbGetDeviceStaticDescriptor(devId, device, USB_DT_CONFIG);
+        if (config == NULL)
+            return 0;
+
+        interface = (UsbInterfaceDescriptor *)((char *)config + config->bLength);
+        if (interface->bInterfaceClass != USB_CLASS_HID)
+            return 0;
+
+        epCount = interface->bNumEndpoints - 1;
+        endpoint = (UsbEndpointDescriptor *)UsbGetDeviceStaticDescriptor(devId, NULL, USB_DT_ENDPOINT);
+        do {
+            if (endpoint->bmAttributes == USB_ENDPOINT_XFER_INT &&
+                (endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN)
+                return 1;
+
+            endpoint = (UsbEndpointDescriptor *)((char *)endpoint + endpoint->bLength);
+        } while (endpoint != NULL && epCount-- > 0);
+    }
 
     return 0;
 }
@@ -127,8 +160,14 @@ int usb_connect(int devId)
     config = (UsbConfigDescriptor *)UsbGetDeviceStaticDescriptor(devId, device, USB_DT_CONFIG);
     interface = (UsbInterfaceDescriptor *)((char *)config + config->bLength);
 
+    ds34pad[pad].vid = device->idVendor;
+    ds34pad[pad].pid = device->idProduct;
+
     if (device->idProduct == DS3_PID) {
         ds34pad[pad].type = DS3;
+        epCount = interface->bNumEndpoints - 1;
+    } else if (hid_pad_find(device->idVendor, device->idProduct) != NULL) {
+        ds34pad[pad].type = JOYSTICK;
         epCount = interface->bNumEndpoints - 1;
     } else {
         ds34pad[pad].type = DS4;
@@ -141,6 +180,7 @@ int usb_connect(int devId)
         if (endpoint->bmAttributes == USB_ENDPOINT_XFER_INT) {
             if ((endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN && ds34pad[pad].interruptEndp < 0) {
                 ds34pad[pad].interruptEndp = UsbOpenEndpointAligned(devId, endpoint);
+                ds34pad[pad].maxPacketSize = (u16)(endpoint->wMaxPacketSizeHB << 8 | endpoint->wMaxPacketSizeLB);
                 DPRINTF("DS34USB: register Event endpoint id =%i addr=%02X packetSize=%i\n", ds34pad[pad].interruptEndp, endpoint->bEndpointAddress, (unsigned short int)endpoint->wMaxPacketSizeHB << 8 | endpoint->wMaxPacketSizeLB);
             }
             if ((endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_OUT && ds34pad[pad].outEndp < 0) {
@@ -153,9 +193,19 @@ int usb_connect(int devId)
 
     } while (epCount--);
 
-    if (ds34pad[pad].interruptEndp < 0 || ds34pad[pad].outEndp < 0) {
+    if (ds34pad[pad].interruptEndp < 0 || (ds34pad[pad].type != JOYSTICK && ds34pad[pad].outEndp < 0)) {
         usb_release(pad);
         return 1;
+    }
+
+    if (ds34pad[pad].type == JOYSTICK) {
+        const struct hid_pad_device *profile;
+
+        profile = hid_pad_find(device->idVendor, device->idProduct);
+        if (profile == NULL || ds34pad[pad].maxPacketSize < profile->report_len) {
+            usb_release(pad);
+            return 1;
+        }
     }
 
     ds34pad[pad].status |= DS34USB_STATE_CONNECTED;
@@ -212,6 +262,8 @@ static void usb_data_cb(int resultCode, int bytes, void *arg)
 
     usb_resulCode = resultCode;
 
+    ds34pad[pad].recvBytes = (u16)bytes;
+
     SignalSema(ds34pad[pad].sema);
 }
 
@@ -238,14 +290,15 @@ static void usb_config_set(int result, int count, void *arg)
         DelayThread(10000);
         led[0] = led_patterns[pad][1];
         led[3] = 0;
+        LEDRumble(led, 0, 0, pad);
     } else if (ds34pad[pad].type == DS4) {
         led[0] = rgbled_patterns[pad][1][0];
         led[1] = rgbled_patterns[pad][1][1];
         led[2] = rgbled_patterns[pad][1][2];
         led[3] = 0;
+        LEDRumble(led, 0, 0, pad);
     }
 
-    LEDRumble(led, 0, 0, pad);
     DelayThread(20000);
 
     ds34pad[pad].status |= DS34USB_STATE_RUNNING;
@@ -263,8 +316,19 @@ static void DS3USB_init(int pad)
     UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT, (HID_USB_GET_REPORT_FEATURE << 8) | 0xF4, 0, 4, usb_buf, NULL, NULL);
 }
 
-static void readReport(u8 *data, int pad)
+static void readReport(u8 *data, int bytes, int pad)
 {
+    if (ds34pad[pad].type == JOYSTICK) {
+        const struct hid_pad_device *profile;
+        struct hid_pad_report report;
+
+        profile = hid_pad_find(ds34pad[pad].vid, ds34pad[pad].pid);
+
+        if (profile != NULL && bytes >= profile->report_len &&
+            profile->decode(data, (u8)bytes, &report) == 0)
+            translate_pad_hid(&report, &ds34pad[pad].ds2);
+    }
+
     if (data[0]) {
 
         if (ds34pad[pad].type == DS3) {
@@ -529,7 +593,8 @@ void ds34usb_set_led(u8 *led, int port)
 
 void ds34usb_get_data(char *dst, int size, int port)
 {
-    int ret;
+    u8 *buf;
+    int bufSize, transferSize, ret;
 
     if (port >= MAX_PADS)
         return;
@@ -538,12 +603,25 @@ void ds34usb_get_data(char *dst, int size, int port)
 
     PollSema(ds34pad[port].sema);
 
-    ret = UsbInterruptTransfer(ds34pad[port].interruptEndp, usb_buf, MAX_BUFFER_SIZE, usb_data_cb, (void *)port);
+    if (ds34pad[port].type == JOYSTICK) {
+        buf = joy_buf;
+        bufSize = (int)sizeof(joy_buf);
+    } else {
+        buf = usb_buf;
+        bufSize = MAX_BUFFER_SIZE;
+    }
+
+    transferSize = ds34pad[port].maxPacketSize;
+
+    if (transferSize == 0 || transferSize > bufSize)
+        transferSize = bufSize;
+
+    ret = UsbInterruptTransfer(ds34pad[port].interruptEndp, buf, transferSize, usb_data_cb, (void *)port);
 
     if (ret == USB_RC_OK) {
         TransferWait(ds34pad[port].sema);
         if (!usb_resulCode)
-            readReport(usb_buf, port);
+            readReport(buf, ds34pad[port].recvBytes, port);
 
         usb_resulCode = 1;
     } else {
@@ -766,6 +844,10 @@ int _start(int argc, char *argv[])
         ds34pad[pad].outEndp = -1;
         ds34pad[pad].enabled = (enable >> pad) & 1;
         ds34pad[pad].type = 0;
+        ds34pad[pad].maxPacketSize = 0;
+        ds34pad[pad].recvBytes = 0;
+        ds34pad[pad].vid = 0;
+        ds34pad[pad].pid = 0;
 
         ds34pad[pad].data[0] = 0xFF;
         ds34pad[pad].data[1] = 0xFF;
