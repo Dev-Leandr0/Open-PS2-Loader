@@ -2,6 +2,7 @@
 #define _DS34COMMON_H_
 #include <stdint.h>
 
+#define USB_CLASS_HID                 0x03 // USB HID base class
 #define USB_CLASS_WIRELESS_CONTROLLER 0xE0
 #define USB_SUBCLASS_RF_CONTROLLER    0x01
 #define USB_PROTOCOL_BLUETOOTH_PROG   0x01
@@ -310,12 +311,5 @@ void translate_pad_guitar(const struct ds3guitarreport *in, struct ds2report *ou
  * NOTE: if set to 1, ds4report must be large enough for that data to be read!
  */
 void translate_pad_ds4(const struct ds4report *in, struct ds2report *out, uint8_t have_touchpad);
-
-/**
- * Translate a generic USB joystick report into DS2 pad data.
- * @param report 8-byte joystick report
- * @param out DS2 report
- */
-void translate_pad_joystick(const uint8_t *report, struct ds2report *out);
 
 #endif
