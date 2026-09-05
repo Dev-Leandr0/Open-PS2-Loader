@@ -38,6 +38,10 @@ typedef struct _usb_ds34
     };
     u8 analog_btn;
     u8 btn_delay;
+    u16 maxPacketSize; // INT-IN endpoint wMaxPacketSize
+    u16 recvBytes;     // bytes delivered by the latest interrupt transfer
+    u16 vid;           // device VID, used for the HID joystick profile lookup
+    u16 pid;           // device PID, used for the HID joystick profile lookup
 } ds34usb_device;
 
 enum eDS34USBStatus {
@@ -79,6 +83,7 @@ int ds34usb_get_status(int port);
 int ds34usb_get_model(int port);
 void ds34usb_reset();
 int ds34usb_get_data(u8 *dst, int size, int port);
+int ds34usb_get_mode(int port);
 void ds34usb_set_rumble(u8 lrum, u8 rrum, int port);
 void ds34usb_set_mode(int mode, int lock, int port);
 
