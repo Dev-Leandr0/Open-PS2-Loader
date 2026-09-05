@@ -17,6 +17,7 @@
 #define PAD_GET_STATUS      ds34bt_get_status
 #define PAD_RESET           ds34bt_reset
 #define PAD_GET_DATA        ds34bt_get_data
+#define PAD_GET_MODE        ds34bt_get_mode
 #define PAD_SET_RUMBLE      ds34bt_set_rumble
 #define PAD_SET_MODE        ds34bt_set_mode
 #define PAD_GET_MODEL(port) 3
@@ -29,6 +30,7 @@
 #define PAD_GET_STATUS ds34usb_get_status
 #define PAD_RESET      ds34usb_reset
 #define PAD_GET_DATA   ds34usb_get_data
+#define PAD_GET_MODE   ds34usb_get_mode
 #define PAD_GET_MODEL  ds34usb_get_model
 #define PAD_SET_RUMBLE ds34usb_set_rumble
 #define PAD_SET_MODE   ds34usb_set_mode
@@ -431,9 +433,11 @@ void pademu_cmd(int port, u8 *in, u8 *out, u8 out_size)
                 }
             }
 
-            i = PAD_GET_DATA(&out[3], out_size - 3, port);
+            PAD_GET_DATA(&out[3], out_size - 3, port);
 
             if (pad[port].mode_lock == 0) { // mode unlocked
+                i = PAD_GET_MODE(port);
+
                 if (pad[port].mode != i) {
                     pad[port].mode = i;
 
