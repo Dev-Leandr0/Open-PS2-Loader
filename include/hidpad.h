@@ -133,9 +133,9 @@ static inline const struct hid_pad_device *hid_pad_find(u16 vid, u16 pid)
 // The device requires two consecutive SET_REPORT packets on the control endpoint
 // to actuate rumble motors, followed by a COMMIT command:
 //
-//   UPDATE : 00 51 00 <rrum> 00 <lrum> 00 00
-//   COMMIT : 00 FA FE 00 00 00 00 00
-//   STOP   : 00 F3 00 00 00 00 00 00
+//   UPDATE : 51 00 <rrum> 00 <lrum> 00 00
+//   COMMIT : FA FE 00 00 00 00 00
+//   STOP   : F3 00 00 00 00 00 00
 //
 // lrum controls the left (strong) motor, rrum the right (weak) motor.
 // Values outside 0x00..0x0B are accepted by the device; quirk 0x0A→0x0B is
