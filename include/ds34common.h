@@ -2,10 +2,18 @@
 #define _DS34COMMON_H_
 #include <stdint.h>
 
+#ifndef USB_CLASS_HID
 #define USB_CLASS_HID                 0x03 // USB HID base class
+#endif
+#ifndef USB_CLASS_WIRELESS_CONTROLLER
 #define USB_CLASS_WIRELESS_CONTROLLER 0xE0
+#endif
+#ifndef USB_SUBCLASS_RF_CONTROLLER
 #define USB_SUBCLASS_RF_CONTROLLER    0x01
+#endif
+#ifndef USB_PROTOCOL_BLUETOOTH_PROG
 #define USB_PROTOCOL_BLUETOOTH_PROG   0x01
+#endif
 
 #define SONY_VID            0x12ba // Sony
 #define DS34_VID            0x054C // Sony Corporation

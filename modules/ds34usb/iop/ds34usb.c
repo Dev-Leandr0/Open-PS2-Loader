@@ -73,6 +73,8 @@ int usb_disconnect(int devId);
 
 static void usb_release(int pad);
 static void usb_config_set(int result, int count, void *arg);
+static void usb_cmd_cb(int resultCode, int bytes, void *arg);
+static void TransferWait(int sema);
 
 UsbDriver usb_driver = {NULL, NULL, "ds34usb", usb_probe, usb_connect, usb_disconnect};
 
