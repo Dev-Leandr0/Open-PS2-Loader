@@ -1,7 +1,8 @@
 // Host-side test harness for the OPL HID gamepad layer (include/hidpad.h).
 //
-// It exercises hid_pad_find(), the 0079:0006 decoder and translate_pad_hid()
-// with plain C compiled for the host, without any PS2 hardware. Build and run
+// It exercises hid_pad_find(), the 0079:0006 decoder, translate_pad_hid()
+// and the DragonRise rumble encoders with plain C compiled for the host,
+// without any PS2 hardware. Build and run
 // with the accompanying Makefile (needs a C99 compiler, e.g. gcc):
 //
 //     make test
@@ -61,7 +62,7 @@ static void test_profile(void)
     CHECK(joy->vid == 0x0079);
     CHECK(joy->pid == 0x0006);
     CHECK(joy->report_len == 8);
-    CHECK(joy->caps == 0);
+    CHECK(joy->caps == HIDP_CAP_RUMBLE);
     CHECK(joy->decode != NULL);
     CHECK(joy->decode == hid_pad_decode_0079_0006);
     CHECK(none == NULL);
@@ -474,6 +475,61 @@ static void test_full_chain(void)
     CHECK(d.PressureLeft == 255);
 }
 
+// 11. ENCODER: DragonRise 0079:0006 rumble output packets.
+static void test_encode_rumble(void)
+{
+    u8 out[8];
+
+    /* zero rumble */
+    hid_pad_encode_rumble_0079_0006(0, 0, out);
+    CHECK(out[0] == 0x00 && out[1] == 0x51 && out[2] == 0x00);
+    CHECK(out[3] == 0x00 && out[4] == 0x00 && out[5] == 0x00);
+    CHECK(out[6] == 0x00 && out[7] == 0x00);
+
+    /* strong motor only (lrum=0x0B, rrum=0x00) */
+    hid_pad_encode_rumble_0079_0006(0x0B, 0x00, out);
+    CHECK(out[3] == 0x00);   /* rrum -> byte 3 */
+    CHECK(out[5] == 0x0B);   /* lrum -> byte 5 */
+
+    /* weak motor only (lrum=0x00, rrum=0x0B) */
+    hid_pad_encode_rumble_0079_0006(0x00, 0x0B, out);
+    CHECK(out[3] == 0x0B);
+    CHECK(out[5] == 0x00);
+
+    /* both motors at maximum */
+    hid_pad_encode_rumble_0079_0006(0x0B, 0x0B, out);
+    CHECK(out[3] == 0x0B);
+    CHECK(out[5] == 0x0B);
+
+    /* quirk defensive range: values 0x0A and 0x0B are both accepted */
+    hid_pad_encode_rumble_0079_0006(0x0A, 0x0A, out);
+    CHECK(out[5] == 0x0A && out[3] == 0x0A);
+}
+
+static void test_encode_commit(void)
+{
+    u8 out[8];
+
+    hid_pad_encode_commit_0079_0006(out);
+    CHECK(out[0] == 0x00);
+    CHECK(out[1] == 0xFA);
+    CHECK(out[2] == 0xFE);
+    CHECK(out[3] == 0x00 && out[4] == 0x00 && out[5] == 0x00);
+    CHECK(out[6] == 0x00 && out[7] == 0x00);
+}
+
+static void test_encode_stop(void)
+{
+    u8 out[8];
+
+    hid_pad_encode_stop_0079_0006(out);
+    CHECK(out[0] == 0x00);
+    CHECK(out[1] == 0xF3);
+    CHECK(out[2] == 0x00);
+    CHECK(out[3] == 0x00 && out[4] == 0x00 && out[5] == 0x00);
+    CHECK(out[6] == 0x00 && out[7] == 0x00);
+}
+
 int main(void)
 {
     test_profile();
@@ -489,6 +545,9 @@ int main(void)
     test_translate_no_residue();
     test_combined();
     test_full_chain();
+    test_encode_rumble();
+    test_encode_commit();
+    test_encode_stop();
 
     if (g_failures) {
         printf("%d/%d checks FAILED\n", g_failures, g_checks);

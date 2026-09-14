@@ -94,8 +94,7 @@ static inline int hid_pad_decode_0079_0006(
     return 0;
 }
 
-// Device capabilities, reserved for future gamepads (e.g. rumble, LED).
-// Not enabled for the 0079:0006 joystick in this phase.
+// Device capabilities for gamepads that support rumble, LED, etc.
 #define HIDP_CAP_RUMBLE (1 << 0)
 #define HIDP_CAP_LED    (1 << 1)
 
@@ -112,7 +111,7 @@ static const struct hid_pad_device hid_pad_devices[] = {
         .vid = 0x0079,
         .pid = 0x0006,
         .report_len = 8,
-        .caps = 0,
+        .caps = HIDP_CAP_RUMBLE,
         .decode = hid_pad_decode_0079_0006,
     },
 };
@@ -127,6 +126,55 @@ static inline const struct hid_pad_device *hid_pad_find(u16 vid, u16 pid)
     }
 
     return NULL;
+}
+
+// DragonRise 0079:0006 SET_REPORT encoder.
+//
+// The device requires two consecutive SET_REPORT packets on the control endpoint
+// to actuate rumble motors, followed by a COMMIT command:
+//
+//   UPDATE : 00 51 00 <rrum> 00 <lrum> 00 00
+//   COMMIT : 00 FA FE 00 00 00 00 00
+//   STOP   : 00 F3 00 00 00 00 00 00
+//
+// lrum controls the left (strong) motor, rrum the right (weak) motor.
+// Values outside 0x00..0x0B are accepted by the device; quirk 0x0A→0x0B is
+// carried over from earlier drivers for defensive compatibility.
+
+static inline void hid_pad_encode_rumble_0079_0006(u8 lrum, u8 rrum, u8 *out)
+{
+    out[0] = 0x00;
+    out[1] = 0x51;
+    out[2] = 0x00;
+    out[3] = rrum;
+    out[4] = 0x00;
+    out[5] = lrum;
+    out[6] = 0x00;
+    out[7] = 0x00;
+}
+
+static inline void hid_pad_encode_commit_0079_0006(u8 *out)
+{
+    out[0] = 0x00;
+    out[1] = 0xFA;
+    out[2] = 0xFE;
+    out[3] = 0x00;
+    out[4] = 0x00;
+    out[5] = 0x00;
+    out[6] = 0x00;
+    out[7] = 0x00;
+}
+
+static inline void hid_pad_encode_stop_0079_0006(u8 *out)
+{
+    out[0] = 0x00;
+    out[1] = 0xF3;
+    out[2] = 0x00;
+    out[3] = 0x00;
+    out[4] = 0x00;
+    out[5] = 0x00;
+    out[6] = 0x00;
+    out[7] = 0x00;
 }
 
 // Hat direction to DS2 D-pad button masks (active bits, see DS2Button*).

@@ -237,6 +237,23 @@ static void usb_release(int pad)
 {
     PollSema(ds34pad[pad].sema);
 
+    // Send STOP to rumble-capable JOYSTICK before closing endpoints.
+    // Tolerates transfer errors and device disconnection.
+    if (ds34pad[pad].type == JOYSTICK) {
+        const struct hid_pad_device *profile;
+
+        profile = hid_pad_find(ds34pad[pad].vid, ds34pad[pad].pid);
+        if (profile && (profile->caps & HIDP_CAP_RUMBLE)) {
+            int stop_ret;
+
+            hid_pad_encode_stop_0079_0006(usb_buf);
+            stop_ret = UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT,
+                                          (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 8, usb_buf, usb_cmd_cb, (void *)pad);
+            if (stop_ret == USB_RC_OK)
+                TransferWait(ds34pad[pad].cmd_sema);
+        }
+    }
+
     if (ds34pad[pad].interruptEndp >= 0)
         UsbCloseEndpoint(ds34pad[pad].interruptEndp);
 
@@ -512,6 +529,26 @@ static int LEDRumble(u8 *led, u8 lrum, u8 rrum, int pad)
         }
 
         ret = UsbInterruptTransfer(ds34pad[pad].outEndp, usb_buf, 32, usb_cmd_cb, (void *)pad);
+    } else if (ds34pad[pad].type == JOYSTICK) {
+        const struct hid_pad_device *profile;
+
+        profile = hid_pad_find(ds34pad[pad].vid, ds34pad[pad].pid);
+        if (!(profile && (profile->caps & HIDP_CAP_RUMBLE))) {
+            SignalSema(ds34pad[pad].cmd_sema);
+            return 0;
+        }
+
+        // UPDATE: 00 51 00 <rrum> 00 <lrum> 00 00
+        hid_pad_encode_rumble_0079_0006(lrum, rrum, usb_buf);
+        ret = UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT,
+                                 (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 8, usb_buf, usb_cmd_cb, (void *)pad);
+        if (ret == USB_RC_OK)
+            TransferWait(ds34pad[pad].cmd_sema);
+
+        // COMMIT: 00 FA FE 00 00 00 00 00
+        hid_pad_encode_commit_0079_0006(usb_buf);
+        ret = UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT,
+                                 (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 8, usb_buf, usb_cmd_cb, (void *)pad);
     }
 
     ds34pad[pad].oldled[0] = led[0];

@@ -121,7 +121,9 @@ cualquier presión física.
 * solo existe el perfil `0x0079:0x0006` en `hid_pad_devices[]`
 * no hay parser HID genérico ni se interpreta el HID Report Descriptor
 * no hay autodetección de layouts desconocidos
-* rumble no implementado para este joystick (`caps = 0`, sin canal de salida)
+* el rumble se activa a través de `HIDP_CAP_RUMBLE` (ver sección G); la
+  intensidad se controla solo con `lrum` (motor izquierdo, fuerte) y `rrum`
+  (motor derecho, débil)
 * Analog OFF no fue resuelto en esta fase (ver apéndice: comportamiento
   observado del dispositivo, no implementado)
 * cualquier otro dispositivo requiere un perfil explícito con su decoder
@@ -130,13 +132,101 @@ cualquier presión física.
 
 | Item                      | Estado                                                                 |
 |---------------------------|------------------------------------------------------------------------|
-| tests host-side (`labs/hidpadtest/`) | Ejecutados: gcc (MinGW) 4.6.2, 469/469 checks OK               |
+| tests host-side (`labs/hidpadtest/`) | Ejecutados: gcc (MinGW), 469/469 checks OK                   |
 | compilación PS2SDK        | Pendiente (no hay toolchain instalada)                                |
-| prueba con hardware real  | Pendiente (no se probó el driver en consola para este cierre)         |
+| prueba con hardware real  | Entrada: completa (perfil, ejes, hat, botones). Rumble: validado físicamente en Windows (SET_REPORT, motores, COMMIT, ver sección G) |
 
 Las capturas crudas del dispositivo reproducidas en el apéndice fueron
 registradas durante el desarrollo y no se han reproducido físicamente en este
 cierre.
+
+---
+
+## G. Protocolo de rumble (DragonRise SET_REPORT)
+
+El joystick `0x0079:0x0006` NO tiene endpoint OUT; el rumble se envía por el
+endpoint de control (SET_REPORT, `bmRequestType=0x21`, `bRequest=0x09`,
+`wValue=0x0200`, `wIndex=0`, `wLength=8`). El transporte es el mismo que
+`UsbControlTransfer` de la pila USB de OPL usando un reporte de tipo OUTPUT
+(`HID_USB_SET_REPORT_OUTPUT`).
+
+### G.1 Actualización de motores (UPDATE)
+
+```
+00 51 00 <rrum> 00 <lrum> 00 00
+```
+
+Los bytes relevantes:
+
+* byte 0: `0x00` (report ID)
+* byte 1: `0x51` (comando de actualización de motores)
+* byte 3: `rrum` — intensidad del motor derecho/weak/`rrum`
+* byte 5: `lrum` — intensidad del motor izquierdo/strong/`lrum`
+
+### G.2 Commit (COMMIT)
+
+```
+00 FA FE 00 00 00 00 00
+```
+
+* byte 1: `0xFA` (comando de commit)
+* byte 2: `0xFE` (constante del comando)
+
+### G.3 Stop (STOP)
+
+```
+00 F3 00 00 00 00 00 00
+```
+
+* byte 1: `0xF3` (comando de parada de motores)
+
+### G.4 Invariante del transporte
+
+UN SET_REPORT de UPDATE no actúa el motor por sí solo; es necesario un COMMIT
+(intensidades + commit). El orden verificado físicamente es:
+
+```
+UPDATE (00 51 ... ) → COMMIT (00 FA FE ...)
+```
+
+Enviar UPDATE sin COMMIT no produce vibración (`FA FE` es necesario — confirmado
+físicamente). El COMMIT se envía a la vez que el STOP en la liberación del
+dispositivo.
+
+### G.5 Rango de intensidad y quirk `0x0A → 0x0B`
+
+* el dispositivo acepta valores `0x00..0x0B`; `0x0B` es máximo
+* quirk `0x0A → 0x0B`: heredado de drivers previos como compatibilidad
+  defensiva. NO reproducido como requisito demostrado en esta validación
+  física; no se observó bloqueo ni diferencia funcional entre `0x0A` y `0x0B`
+* la API interna acepta el rango completo 0..255; el driver no aplica máscara
+  (el dispositivo acepta los valores, la intensidad percibida satura antes)
+
+### G.6 Cómo se integra en OPL
+
+* `include/hidpad.h`: encoders `hid_pad_encode_rumble_0079_0006()` /
+  `hid_pad_encode_commit_0079_0006()` / `hid_pad_encode_stop_0079_0006()` y
+  `HIDP_CAP_RUMBLE` activado en el perfil
+* `modules/pademu/ds34usb.c`: `LEDRumble()` (game path) envía UPDATE + COMMIT;
+  `usb_release()` envía STOP antes de cerrar endpoints
+* `modules/ds34usb/iop/ds34usb.c`: misma integración en el path del menú
+* el camino sin `HIDP_CAP_RUMBLE` ejecuta `PollSema → SignalSema → return 0`
+  (evita el timeout de 200 ms de `TransferWait`)
+
+### G.7 Validación física (Windows, reporte resumido)
+
+| Prueba                          | Resultado                                      |
+|---------------------------------|------------------------------------------------|
+| identificación HID              | VID `0x0079`, PID `0x0006`, versión `0x0107`   |
+| caps HID (`HidP_GetCaps`)       | Input=9, Output=8, Feature=0, ValueCaps=1, FeatureValueCaps=0, status `0x00110000` |
+| SET_REPORT aceptado por la pila | sí (API `HidD_SetOutputReport`)               |
+| motor weak (`rrum`) solo        | sin vibración perceptible                      |
+| motor strong solo               | vibración en el lado izquierdo                  |
+| ambos motores                   | vibración inicial breve en ambos lados, persiste la izquierda |
+| COMMIT sin UPDATE               | ningún motor vibra                             |
+| quirk `0x0A` / `0x0B`            | sin bloqueo; sin diferencia funcional           |
+| STOP                            | confirmado; motores se detienen                |
+| buffers temporales              | eliminados; repo intacto tras la validación    |
 
 ---
 
