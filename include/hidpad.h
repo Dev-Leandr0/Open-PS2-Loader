@@ -143,38 +143,35 @@ static inline const struct hid_pad_device *hid_pad_find(u16 vid, u16 pid)
 
 static inline void hid_pad_encode_rumble_0079_0006(u8 lrum, u8 rrum, u8 *out)
 {
-    out[0] = 0x00;
-    out[1] = 0x51;
-    out[2] = 0x00;
-    out[3] = rrum;
-    out[4] = 0x00;
-    out[5] = lrum;
+    out[0] = 0x51;
+    out[1] = 0x00;
+    out[2] = rrum;
+    out[3] = 0x00;
+    out[4] = lrum;
+    out[5] = 0x00;
     out[6] = 0x00;
-    out[7] = 0x00;
 }
 
 static inline void hid_pad_encode_commit_0079_0006(u8 *out)
 {
-    out[0] = 0x00;
-    out[1] = 0xFA;
-    out[2] = 0xFE;
-    out[3] = 0x00;
-    out[4] = 0x00;
-    out[5] = 0x00;
-    out[6] = 0x00;
-    out[7] = 0x00;
-}
-
-static inline void hid_pad_encode_stop_0079_0006(u8 *out)
-{
-    out[0] = 0x00;
-    out[1] = 0xF3;
+    out[0] = 0xFA;
+    out[1] = 0xFE;
     out[2] = 0x00;
     out[3] = 0x00;
     out[4] = 0x00;
     out[5] = 0x00;
     out[6] = 0x00;
-    out[7] = 0x00;
+}
+
+static inline void hid_pad_encode_stop_0079_0006(u8 *out)
+{
+    out[0] = 0xF3;
+    out[1] = 0x00;
+    out[2] = 0x00;
+    out[3] = 0x00;
+    out[4] = 0x00;
+    out[5] = 0x00;
+    out[6] = 0x00;
 }
 
 // Hat direction to DS2 D-pad button masks (active bits, see DS2Button*).

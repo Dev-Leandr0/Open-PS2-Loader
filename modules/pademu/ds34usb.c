@@ -251,7 +251,7 @@ static void usb_release(int pad)
 
             hid_pad_encode_stop_0079_0006(usb_buf);
             stop_ret = UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT,
-                                          (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 8, usb_buf, usb_cmd_cb, (void *)pad);
+                                          (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 7, usb_buf, usb_cmd_cb, (void *)pad);
             if (stop_ret == USB_RC_OK)
                 TransferWait(ds34pad[pad].cmd_sema);
         }
@@ -499,17 +499,17 @@ static int LEDRumble(u8 *led, u8 lrum, u8 rrum, int pad)
             return 0;
         }
 
-        // UPDATE: 00 51 00 <rrum> 00 <lrum> 00 00
+        // UPDATE: 51 00 <rrum> 00 <lrum> 00 00
         hid_pad_encode_rumble_0079_0006(lrum, rrum, usb_buf);
         ret = UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT,
-                                 (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 8, usb_buf, usb_cmd_cb, (void *)pad);
+                                 (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 7, usb_buf, usb_cmd_cb, (void *)pad);
         if (ret == USB_RC_OK)
             TransferWait(ds34pad[pad].cmd_sema);
 
-        // COMMIT: 00 FA FE 00 00 00 00 00
+        // COMMIT: FA FE 00 00 00 00 00
         hid_pad_encode_commit_0079_0006(usb_buf);
         ret = UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT,
-                                 (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 8, usb_buf, usb_cmd_cb, (void *)pad);
+                                 (HID_USB_SET_REPORT_OUTPUT << 8) | 0x00, 0, 7, usb_buf, usb_cmd_cb, (void *)pad);
     }
 
     ds34pad[pad].oldled[0] = led[0];

@@ -134,7 +134,8 @@ cualquier presión física.
 |---------------------------|------------------------------------------------------------------------|
 | tests host-side (`labs/hidpadtest/`) | Ejecutados: gcc (MinGW), 469/469 checks OK                   |
 | compilación PS2SDK        | Pendiente (no hay toolchain instalada)                                |
-| prueba con hardware real  | Entrada: completa (perfil, ejes, hat, botones). Rumble: validado físicamente en Windows (SET_REPORT, motores, COMMIT, ver sección G) |
+| prueba con hardware real (entrada)  | Completa (perfil, ejes, hat, botones)                    |
+| prueba con hardware real (rumble)   | Windows: validado físicamente (sección G). PS2: fallo diagnosticado (prefijo `0x00` + `wLength=8`) y corregido; pendiente re-probar build corregido |
 
 Las capturas crudas del dispositivo reproducidas en el apéndice fueron
 registradas durante el desarrollo y no se han reproducido físicamente en este
@@ -146,39 +147,51 @@ cierre.
 
 El joystick `0x0079:0x0006` NO tiene endpoint OUT; el rumble se envía por el
 endpoint de control (SET_REPORT, `bmRequestType=0x21`, `bRequest=0x09`,
-`wValue=0x0200`, `wIndex=0`, `wLength=8`). El transporte es el mismo que
+`wValue=0x0200`, `wIndex=0`, `wLength=7`). El transporte es el mismo que
 `UsbControlTransfer` de la pila USB de OPL usando un reporte de tipo OUTPUT
 (`HID_USB_SET_REPORT_OUTPUT`).
+
+> **Causa raíz del fallo en PS2 (corregido).** El firmware del dispositivo
+> espera los **7 bytes de protocolo SIN el byte de report ID `0x00`** delante.
+> Windows lo enmascara: el minidriver HID elimina el byte de report ID
+> implícito `0x00` del buffer de `HidD_SetOutputReport` antes de enviarlo al
+> bus, así que el buffer de 8 bytes `00 51 00 <rrum> 00 <lrum> 00 00` llegaba
+> al dispositivo como `51 00 <rrum> 00 <lrum> 00 00` (7 bytes) y el motor
+> vibraba. La pila USB de la PS2 **no** elimina ese byte: enviaba los 8 bytes
+> completos, `byte[0]=0x00` corrompía el comando y el rumble no actuaba.
+> La corrección elimina el prefijo `0x00` y reduce `wLength` de 8 a 7 en todos
+> los envíos (UPDATE, COMMIT y STOP).
 
 ### G.1 Actualización de motores (UPDATE)
 
 ```
-00 51 00 <rrum> 00 <lrum> 00 00
+51 00 <rrum> 00 <lrum> 00 00
 ```
 
 Los bytes relevantes:
 
-* byte 0: `0x00` (report ID)
-* byte 1: `0x51` (comando de actualización de motores)
-* byte 3: `rrum` — intensidad del motor derecho/weak/`rrum`
-* byte 5: `lrum` — intensidad del motor izquierdo/strong/`lrum`
+* byte 0: `0x51` (comando de actualización de motores)
+* byte 1: `0x00` (reservado / separador)
+* byte 2: `rrum` — intensidad del motor derecho/weak/`rrum`
+* byte 3: `0x00` (reservado / separador)
+* byte 4: `lrum` — intensidad del motor izquierdo/strong/`lrum`
 
 ### G.2 Commit (COMMIT)
 
 ```
-00 FA FE 00 00 00 00 00
+FA FE 00 00 00 00 00
 ```
 
-* byte 1: `0xFA` (comando de commit)
-* byte 2: `0xFE` (constante del comando)
+* byte 0: `0xFA` (comando de commit)
+* byte 1: `0xFE` (constante del comando)
 
 ### G.3 Stop (STOP)
 
 ```
-00 F3 00 00 00 00 00 00
+F3 00 00 00 00 00 00
 ```
 
-* byte 1: `0xF3` (comando de parada de motores)
+* byte 0: `0xF3` (comando de parada de motores)
 
 ### G.4 Invariante del transporte
 
@@ -186,7 +199,7 @@ UN SET_REPORT de UPDATE no actúa el motor por sí solo; es necesario un COMMIT
 (intensidades + commit). El orden verificado físicamente es:
 
 ```
-UPDATE (00 51 ... ) → COMMIT (00 FA FE ...)
+UPDATE (51 00 ... ) → COMMIT (FA FE ...)
 ```
 
 Enviar UPDATE sin COMMIT no produce vibración (`FA FE` es necesario — confirmado
@@ -213,20 +226,23 @@ dispositivo.
 * el camino sin `HIDP_CAP_RUMBLE` ejecuta `PollSema → SignalSema → return 0`
   (evita el timeout de 200 ms de `TransferWait`)
 
-### G.7 Validación física (Windows, reporte resumido)
+### G.7 Validación física
 
 | Prueba                          | Resultado                                      |
 |---------------------------------|------------------------------------------------|
 | identificación HID              | VID `0x0079`, PID `0x0006`, versión `0x0107`   |
 | caps HID (`HidP_GetCaps`)       | Input=9, Output=8, Feature=0, ValueCaps=1, FeatureValueCaps=0, status `0x00110000` |
-| SET_REPORT aceptado por la pila | sí (API `HidD_SetOutputReport`)               |
+| SET_REPORT aceptado por la pila | sí (`HidD_SetOutputReport`); el conteo Output=8 incluye el report ID implícito `0x00` → al bus van 7 bytes |
+| endpoint OUT (interrupt)        | **ausente**: `hidapi.write()` devuelve -1; `WriteFile` de pywinusb hace timeout |
+| control APIs (`HidD_SetOutputReport`/`GetInputReport`) | devuelven FALSE con error 0 en este dispositivo sin report ID (quirk de Windows; no usable como evidencia) |
 | motor weak (`rrum`) solo        | sin vibración perceptible                      |
 | motor strong solo               | vibración en el lado izquierdo                  |
 | ambos motores                   | vibración inicial breve en ambos lados, persiste la izquierda |
 | COMMIT sin UPDATE               | ningún motor vibra                             |
 | quirk `0x0A` / `0x0B`            | sin bloqueo; sin diferencia funcional           |
 | STOP                            | confirmado; motores se detienen                |
-| buffers temporales              | eliminados; repo intacto tras la validación    |
+| prueba en PS2 real (pre-fix)    | entrada completa; **rumble no vibraba** con `wLength=8` y prefijo `0x00` (vibración habilitada en Pad Emulation) |
+| prueba en PS2 real (post-fix)   | pendiente — verificar con el build corregido (`wLength=7`, sin prefijo) |
 
 ---
 

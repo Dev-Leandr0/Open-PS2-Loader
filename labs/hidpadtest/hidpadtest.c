@@ -478,56 +478,53 @@ static void test_full_chain(void)
 // 11. ENCODER: DragonRise 0079:0006 rumble output packets.
 static void test_encode_rumble(void)
 {
-    u8 out[8];
+    u8 out[7];
 
     /* zero rumble */
     hid_pad_encode_rumble_0079_0006(0, 0, out);
-    CHECK(out[0] == 0x00 && out[1] == 0x51 && out[2] == 0x00);
+    CHECK(out[0] == 0x51 && out[1] == 0x00 && out[2] == 0x00);
     CHECK(out[3] == 0x00 && out[4] == 0x00 && out[5] == 0x00);
-    CHECK(out[6] == 0x00 && out[7] == 0x00);
+    CHECK(out[6] == 0x00);
 
     /* strong motor only (lrum=0x0B, rrum=0x00) */
     hid_pad_encode_rumble_0079_0006(0x0B, 0x00, out);
-    CHECK(out[3] == 0x00);   /* rrum -> byte 3 */
-    CHECK(out[5] == 0x0B);   /* lrum -> byte 5 */
+    CHECK(out[2] == 0x00);   /* rrum -> byte 2 */
+    CHECK(out[4] == 0x0B);   /* lrum -> byte 4 */
 
     /* weak motor only (lrum=0x00, rrum=0x0B) */
     hid_pad_encode_rumble_0079_0006(0x00, 0x0B, out);
-    CHECK(out[3] == 0x0B);
-    CHECK(out[5] == 0x00);
+    CHECK(out[2] == 0x0B);
+    CHECK(out[4] == 0x00);
 
     /* both motors at maximum */
     hid_pad_encode_rumble_0079_0006(0x0B, 0x0B, out);
-    CHECK(out[3] == 0x0B);
-    CHECK(out[5] == 0x0B);
+    CHECK(out[2] == 0x0B);
+    CHECK(out[4] == 0x0B);
 
     /* quirk defensive range: values 0x0A and 0x0B are both accepted */
     hid_pad_encode_rumble_0079_0006(0x0A, 0x0A, out);
-    CHECK(out[5] == 0x0A && out[3] == 0x0A);
+    CHECK(out[4] == 0x0A && out[2] == 0x0A);
 }
 
 static void test_encode_commit(void)
 {
-    u8 out[8];
+    u8 out[7];
 
     hid_pad_encode_commit_0079_0006(out);
-    CHECK(out[0] == 0x00);
-    CHECK(out[1] == 0xFA);
-    CHECK(out[2] == 0xFE);
-    CHECK(out[3] == 0x00 && out[4] == 0x00 && out[5] == 0x00);
-    CHECK(out[6] == 0x00 && out[7] == 0x00);
+    CHECK(out[0] == 0xFA);
+    CHECK(out[1] == 0xFE);
+    CHECK(out[2] == 0x00 && out[3] == 0x00 && out[4] == 0x00);
+    CHECK(out[5] == 0x00 && out[6] == 0x00);
 }
 
 static void test_encode_stop(void)
 {
-    u8 out[8];
+    u8 out[7];
 
     hid_pad_encode_stop_0079_0006(out);
-    CHECK(out[0] == 0x00);
-    CHECK(out[1] == 0xF3);
-    CHECK(out[2] == 0x00);
-    CHECK(out[3] == 0x00 && out[4] == 0x00 && out[5] == 0x00);
-    CHECK(out[6] == 0x00 && out[7] == 0x00);
+    CHECK(out[0] == 0xF3);
+    CHECK(out[1] == 0x00 && out[2] == 0x00 && out[3] == 0x00);
+    CHECK(out[4] == 0x00 && out[5] == 0x00 && out[6] == 0x00);
 }
 
 int main(void)
