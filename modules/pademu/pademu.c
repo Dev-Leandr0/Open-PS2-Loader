@@ -220,6 +220,23 @@ void hookSio2man51(sio2_transfer_data_t *sd)
     pademu_hookSio2man(sd, pSio2man51);
 }
 
+static void pademu_run_physical_block(sio2_transfer_data_t *td, Sio2McProc sio2proc, u32 port, u32 in_off, u32 out_off, u32 in_size, u32 out_size, u32 reg_data)
+{
+    sio2_transfer_data_t phys;
+
+    mips_memset(&phys, 0x00, sizeof(phys));
+
+    phys.regdata[0] = reg_data;
+    phys.in = &td->in[in_off];
+    phys.out = &td->out[out_off];
+    phys.in_size = in_size;
+    phys.out_size = out_size;
+    phys.port_ctrl1[port] = td->port_ctrl1[port];
+    phys.port_ctrl2[port] = td->port_ctrl2[port];
+
+    sio2proc(&phys);
+}
+
 void pademu_hookSio2man(sio2_transfer_data_t *td, Sio2McProc sio2proc)
 {
     register u32 ctrl, port1, port2;
@@ -243,25 +260,25 @@ void pademu_hookSio2man(sio2_transfer_data_t *td, Sio2McProc sio2proc)
                     if (pad[0].enabled && pad[1].enabled) { // emulating 2 pads
                         sio2proc = pademu;
                     } else if (pad[0].enabled || pad[1].enabled) { // only one
-                        if (pad[0].enabled) {
-                            ctrl = 0;
-                        } else if (pad[1].enabled) {
-                            for (ctrl = 5; ctrl < td->in_size - 3; ctrl++) {
-                                if (td->in[ctrl] == 0x01 && (td->in[ctrl + 1] & 0xF0) == 0x40 && td->in[ctrl + 2] == 0x00) {
-                                    if (ctrl != 5 && ctrl != 9 && ctrl != 21)
-                                        continue;
-                                    else
-                                        break;
-                                }
+                        u32 in0 = (td->regdata[0] >> 8) & 0x1FF;
+                        u32 out0 = (td->regdata[0] >> 18) & 0x1FF;
+                        u32 in1 = (td->regdata[1] >> 8) & 0x1FF;
+                        u32 out1 = (td->regdata[1] >> 18) & 0x1FF;
+
+                        if (in0 && in1 && out0 && out1) { // both block descriptors valid
+                            if (pad[0].enabled) { // emulating P1, physical P2
+                                pademu_run_physical_block(td, sio2proc, port2, in0, out0, in1, out1, td->regdata[1]);
+                                pademu_cmd(0, &td->in[0], &td->out[0], out0);
+                            } else { // emulating P2, physical P1
+                                pademu_run_physical_block(td, sio2proc, port1, 0, 0, in0, out0, td->regdata[0]);
+                                pademu_cmd(1, &td->in[in0], &td->out[out0], out1);
                             }
-                            if (ctrl + 3 == td->in_size) {
-                                return;
-                            }
+
+                            td->stat6c = 0x1100; //?
+                            td->stat70 = 0x0F;   //?
+
+                            return;
                         }
-                        td->in[ctrl] = 0x00;
-                        sio2proc(td);
-                        td->in[ctrl] = 0x01;
-                        sio2proc = pademu;
                     }
                 }
             } else {
